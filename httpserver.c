@@ -70,7 +70,7 @@ bool http_server_initialize(uint16_t port, handle_request_t handler)
 		http_server_shutdown();
 		return false;
 	}
-	
+
 	request_handler = handler;
 	return true;
 }
@@ -108,7 +108,7 @@ void http_server_listen(void)
 	FD_SET(host_socket, &set);
 
 	// Listen to the server socket for new incoming connections.
-	if (select(2, &set, NULL, NULL, &timeout) <= 0) {
+	if (select(host_socket + 1, &set, NULL, NULL, &timeout) <= 0) {
 		return;
 	}
 
@@ -159,7 +159,6 @@ void http_server_listen(void)
 			http_server_send_response(client, &failure);
 		}
 		else {
-			
 			// Let the user of this library handle the request as they see fit.
 			if (request_handler != NULL) {
 				struct http_response_t response = request_handler(&request);

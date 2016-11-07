@@ -1,6 +1,9 @@
 .vs/
 Debug/
 Release/
+obj/
 *.vcxproj*
 *.db
 *.sln
+*.a
+httpservertest

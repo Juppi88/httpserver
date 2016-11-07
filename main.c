@@ -7,7 +7,12 @@
 #include <Windows.h>
 #define SLEEP(x) Sleep(x)
 #else
-#define SLEEP(x) usleep(1000 * x)
+#include <time.h>
+#define SLEEP(x)\
+	struct timespec t;\
+	t.tv_sec = 0;\
+	t.tv_nsec = 1000000L * x;\
+	nanosleep(&t, NULL)
 #endif
 
 static struct http_response_t handle_request(struct http_request_t *request)
@@ -24,7 +29,7 @@ static struct http_response_t handle_request(struct http_request_t *request)
 		response.content_type = "text/html";
 	}
 
-	printf("method: %s, protocol: %s, request: %s\n", request->method, request->protocol, request->request);
+	printf("HTTP request - method: %s, protocol: %s, request: %s\n", request->method, request->protocol, request->request);
 
 	return response;
 }
@@ -34,14 +39,14 @@ int main(int argc, char *argv[])
 	uint16_t port = 8080;
 
 	for (int i = 0; i < argc; ++i) {
-		if (strcmp(argv[i], "--port") && ++i < argc) {
+		if (strcmp(argv[i], "--port") == 0 && ++i < argc) {
 			port = (uint16_t)atoi(argv[i]);
 			break;
 		}
 	}
 
 	if (port <= 0 || port > 0xFFFF) {
-		printf("Invalid port!\n");
+		printf("Invalid port (%u)!\n", port);
 		return 0;
 	}
 
@@ -50,7 +55,7 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	printf("Started a http server on port %u\n", port);
+	printf("Started a HTTP server on port %u\n", port);
 
 	for (;;) {
 		http_server_listen();
