@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 static bool initialized = false;
-static int host_socket = -1;
+static int64_t host_socket = -1;
 static handle_request_t request_handler = NULL;
 
 static char message[100000];
@@ -18,7 +18,7 @@ static const char *messages[] = {
 
 // --------------------------------------------------------------------------------
 
-static void http_server_send_response(int client, const struct http_response_t *response);
+static void http_server_send_response(int64_t client, const struct http_response_t *response);
 
 bool http_server_initialize(uint16_t port, handle_request_t handler)
 {
@@ -43,7 +43,7 @@ bool http_server_initialize(uint16_t port, handle_request_t handler)
 		http_server_shutdown();
 		return false;
 	}
-
+	
 	// Create a socket for the host and bind it to the address.
 	for (p = res; p != NULL; p = p->ai_next) {
 		host_socket = socket(p->ai_family, p->ai_socktype, 0);
@@ -52,7 +52,7 @@ bool http_server_initialize(uint16_t port, handle_request_t handler)
 			continue;
 		}
 
-		if (bind(host_socket, p->ai_addr, p->ai_addrlen) == 0) {
+		if (bind(host_socket, p->ai_addr, (int)p->ai_addrlen) == 0) {
 			break;
 		}
 	}
@@ -108,14 +108,14 @@ void http_server_listen(void)
 	FD_SET(host_socket, &set);
 
 	// Listen to the server socket for new incoming connections.
-	if (select(host_socket + 1, &set, NULL, NULL, &timeout) <= 0) {
+	if (select((int)(host_socket + 1), &set, NULL, NULL, &timeout) <= 0) {
 		return;
 	}
 
 	struct sockaddr_in client_addr;
 	socklen_t addr_len = sizeof(client_addr);
 
-	int client = accept(host_socket, (struct sockaddr *)&client_addr, &addr_len);
+	int64_t client = accept(host_socket, (struct sockaddr *)&client_addr, &addr_len);
 
 	if (client < 0) {
 		return;
@@ -174,7 +174,7 @@ terminate:
 	close(client);
 }
 
-static void http_server_send_response(int client, const struct http_response_t *response)
+static void http_server_send_response(int64_t client, const struct http_response_t *response)
 {
 	if (response->message >= NUM_MESSAGES) {
 		return;
@@ -191,7 +191,7 @@ static void http_server_send_response(int client, const struct http_response_t *
 
 		size_t content_len = strlen(response->content);
 
-		len = snprintf(buffer, sizeof(buffer), "Content-Length: %u\n", content_len);
+		len = snprintf(buffer, sizeof(buffer), "Content-Length: %u\n", (uint32_t)content_len);
 		send(client, buffer, len, 0);
 
 		len = snprintf(buffer, sizeof(buffer), "Content-Type: %s\n\n", response->content_type);

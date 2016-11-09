@@ -31,7 +31,7 @@ struct http_response_t {
 	const char *content_type;
 };
 
-typedef struct http_response_t(*handle_request_t)(struct http_request_t *request);
+typedef struct http_response_t (*handle_request_t)(struct http_request_t *request);
 
 extern bool http_server_initialize(uint16_t port, handle_request_t handler);
 extern void http_server_shutdown(void);
