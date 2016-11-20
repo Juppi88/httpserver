@@ -43,7 +43,7 @@ bool http_server_initialize(uint16_t port, handle_request_t handler)
 		http_server_shutdown();
 		return false;
 	}
-	
+
 	// Create a socket for the host and bind it to the address.
 	for (p = res; p != NULL; p = p->ai_next) {
 		host_socket = socket(p->ai_family, p->ai_socktype, 0);
@@ -181,6 +181,8 @@ static void http_server_send_response(int64_t client, const struct http_response
 	}
 
 	// Write the header.
+	const char *origin = "Access-Control-Allow-Origin: *\n";
+
 	char buffer[1024];
 	int len = snprintf(buffer, sizeof(buffer), "HTTP/1.0 %s\n", messages[response->message]);
 
@@ -194,9 +196,15 @@ static void http_server_send_response(int64_t client, const struct http_response
 		len = snprintf(buffer, sizeof(buffer), "Content-Length: %u\n", (uint32_t)content_len);
 		send(client, buffer, len, 0);
 
-		len = snprintf(buffer, sizeof(buffer), "Content-Type: %s\n\n", response->content_type);
+		len = snprintf(buffer, sizeof(buffer), "Content-Type: %s\n", response->content_type);
+		send(client, buffer, len, 0);
+
+		len = snprintf(buffer, sizeof(buffer), "%s\n", origin);
 		send(client, buffer, len, 0);
 
 		send(client, response->content, (int)content_len, 0);
+	}
+	else {
+		send(client, origin, strlen(origin), 0);
 	}
 }
