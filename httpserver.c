@@ -71,6 +71,9 @@ bool http_server_initialize(uint16_t port, handle_request_t handler)
 		return false;
 	}
 
+	int opt = 3;
+	setsockopt(host_socket, SOL_SOCKET, SO_RCVLOWAT, &opt, sizeof(opt));
+
 	request_handler = handler;
 	return true;
 }
@@ -101,7 +104,7 @@ void http_server_listen(void)
 
 	struct timeval timeout;
 	timeout.tv_sec = 0;
-	timeout.tv_usec = 0;
+	timeout.tv_usec = 1000;
 
 	fd_set set;
 	FD_ZERO(&set);
@@ -111,7 +114,7 @@ void http_server_listen(void)
 	if (select((int)(host_socket + 1), &set, NULL, NULL, &timeout) <= 0) {
 		return;
 	}
-
+	
 	struct sockaddr_in client_addr;
 	socklen_t addr_len = sizeof(client_addr);
 
@@ -121,10 +124,9 @@ void http_server_listen(void)
 		return;
 	}
 
-	int received;
+	http_socket_set_non_blocking(client);
 
-	received = recv(client, message, sizeof(message) - 1, 0);
-	message[received] = 0;
+	int received = recv(client, message, sizeof(message) - 1, 0);
 
 	// Receiving the request from the client failed.
 	if (received < 0) {
@@ -136,6 +138,8 @@ void http_server_listen(void)
 		goto terminate;
 	}
 
+	message[received] = 0;
+	
 	// Parse the request and respond to it.
 	struct http_request_t request;
 
@@ -170,7 +174,6 @@ void http_server_listen(void)
 terminate:
 
 	// Terminate the client connection.
-	shutdown(client, SHUT_RDWR);
 	close(client);
 }
 
