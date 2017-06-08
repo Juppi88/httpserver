@@ -23,6 +23,7 @@ struct http_request_t {
 	const char *method;
 	const char *request;
 	const char *protocol;
+	const char *hostname;
 };
 
 struct http_response_t {

@@ -143,10 +143,15 @@ void http_server_listen(void)
 	// Parse the request and respond to it.
 	struct http_request_t request;
 
+	char ip[INET_ADDRSTRLEN], host[1024];
+	getnameinfo(&client_addr, addr_len, host, sizeof(host), ip, sizeof(ip), 0);
+
 	request.method = strtok(message, " \t\n");
+	request.hostname = host;
 
 	// Out web server handles only GET requests currently.
-	if (strncmp(request.method, "GET\0", 4) == 0) {
+	if (strncmp(request.method, "GET\0", 4) == 0 ||
+		strncmp(request.method, "POST\0", 5) == 0) {
 
 		request.request = strtok(NULL, " \t");
 		request.protocol = strtok(NULL, " \t\n\r");
@@ -156,7 +161,7 @@ void http_server_listen(void)
 			strncmp(request.protocol, "HTTP/1.1", 8) != 0) {
 
 			struct http_response_t failure;
-			failure.message = HTTP_400_BAD_REQUEST;;
+			failure.message = HTTP_400_BAD_REQUEST;
 			failure.content = NULL;
 			failure.content_type = NULL;
 
