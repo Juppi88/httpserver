@@ -196,6 +196,10 @@ static void http_server_send_response(int64_t client, const struct http_response
 
 	send(client, buffer, len, 0);
 
+	// Tell the client to not cache our response.
+	len = snprintf(buffer, sizeof(buffer), "Cache-Control: max-age = 0, no-cache, must-revalidate, proxy-revalidate\n");
+	send(client, buffer, len, 0);
+
 	// Write the content if there is any.
 	if (response->content != NULL && response->content_type != NULL) {
 
