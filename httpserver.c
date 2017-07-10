@@ -144,7 +144,7 @@ void http_server_listen(void)
 	struct http_request_t request;
 
 	char ip[INET_ADDRSTRLEN], host[1024];
-	getnameinfo(&client_addr, addr_len, host, sizeof(host), ip, sizeof(ip), 0);
+	getnameinfo((struct sockaddr *)&client_addr, addr_len, host, sizeof(host), ip, sizeof(ip), 0);
 
 	request.method = strtok(message, " \t\n");
 	request.hostname = host;
