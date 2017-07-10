@@ -9,8 +9,9 @@ library:
 
 	gcc $(CFLAGS) -c httpserver.c -o obj/httpserver.o
 	gcc $(CFLAGS) -c httpsocket.c -o obj/httpsocket.o
+	gcc $(CFLAGS) -c httputils.c -o obj/httputils.o
 
-	ar -rcs libhttpserver.a obj/httpserver.o obj/httpsocket.o
+	ar -rcs libhttpserver.a obj/httpserver.o obj/httpsocket.o obj/httputils.o
 
 testapp:
 	mkdir -p obj
