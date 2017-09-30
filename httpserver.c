@@ -232,9 +232,14 @@ static void http_server_send_response(int64_t client, const struct http_response
 	// Write the content if there is any.
 	if (response->content != NULL && response->content_type != NULL) {
 
-		size_t content_len = strlen(response->content);
+		size_t content_length = response->content_length;
 
-		len = snprintf(buffer, sizeof(buffer), "Content-Length: %u\n", (uint32_t)content_len);
+		// If response length is not set, assume it is plain text and use strlen to calculate its length.
+		if (content_length == 0) {
+			content_length = strlen(response->content);
+		}
+
+		len = snprintf(buffer, sizeof(buffer), "Content-Length: %u\n", (uint32_t)content_length);
 		send(client, buffer, len, 0);
 
 		len = snprintf(buffer, sizeof(buffer), "Content-Type: %s\n", response->content_type);
@@ -243,7 +248,7 @@ static void http_server_send_response(int64_t client, const struct http_response
 		len = snprintf(buffer, sizeof(buffer), "%s\n", origin);
 		send(client, buffer, len, 0);
 
-		send(client, response->content, (int)content_len, 0);
+		send(client, response->content, (int)content_length, 0);
 	}
 	else {
 		send(client, origin, strlen(origin), 0);
@@ -283,19 +288,34 @@ static bool http_server_handle_static_file(int64_t client, const struct http_req
 		return false;
 	}
 
-	// Interpret an empty file name or a slash as index.html.
-	if (file_name[0] == 0 || (file_name[0] == '/' && file_name[1] == 0)) {
-		file_name = "index.html";
-	}
+	char ext[8];
+	string_get_file_extension(file_name, ext, sizeof(ext));
 
 	char path[512];
-	snprintf(path, sizeof(path), "%s/%s", dir->directory, file_name);
+
+	// Interpret a missing file extension as an index.html for the folder.
+	if (*ext == 0) {
+		snprintf(path, sizeof(path), "%s/%s/index.html", dir->directory, req_path);
+		strcpy(ext, ".html");
+	}
+	else {
+		snprintf(path, sizeof(path), "%s/%s", dir->directory, file_name);
+	}
 
 	FILE *file = fopen(path, "r");
 
 	// Requested file does not exist or it can't be opened.
 	if (file == NULL) {
 		return false;
+	}
+
+	// Get the size of the file.
+	fseek(file, 0, SEEK_END);
+	long length = ftell(file);
+	fseek(file, 0, SEEK_SET);
+
+	if (length >= sizeof(file_buffer)) {
+		length = sizeof(file_buffer) - 1;
 	}
 
 	// Create a response.
@@ -305,29 +325,32 @@ static bool http_server_handle_static_file(int64_t client, const struct http_req
 	response.message = HTTP_200_OK;
 
 	// Set the correct MIME type for the requested file.
-	if (string_ends_with(file_name, ".html")) {
+	if (strcmp(ext, ".html") == 0) {
 		response.content_type = "text/html";
 	}
-	else if (string_ends_with(file_name, ".css")) {
+	else if (strcmp(ext, ".css") == 0) {
 		response.content_type = "text/css";
 	}
-	else if (string_ends_with(file_name, ".js")) {
+	else if (strcmp(ext, ".js") == 0) {
 		response.content_type = "application/javascript";
+	}
+	else if (strcmp(ext, ".png") == 0) {
+		response.content_type = "image/png";
+		response.content_length = length;
+	}
+	else if (strcmp(ext, ".jpg") == 0) {
+		response.content_type = "image/jpeg";
+		response.content_length = length;
+	}
+	else if (strcmp(ext, ".gif") == 0) {
+		response.content_type = "image/gif";
+		response.content_length = length;
 	}
 	else {
 		response.content_type = "text/plain";
 	}
 
-	// Get the size of the file.
-	fseek(file, 0, SEEK_END);
-	long length = ftell(file);
-	fseek(file, 0, SEEK_SET);
-
 	// Read the contents of the file into a buffer which we can send to the requester.
-	if (length >= sizeof(file_buffer)) {
-		length = sizeof(file_buffer) - 1;
-	}
-
 	size_t read = fread(file_buffer, 1, length, file);
 	fclose(file);
 

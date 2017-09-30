@@ -2,8 +2,8 @@
 #ifndef __HTTPUTILS_H
 #define __HTTPUTILS_H
 
-#include <stdbool.h>
+#include <stddef.h>
 
-bool string_ends_with(const char *str, const char *suffix);
+void string_get_file_extension(const char *str, char* buffer, size_t buffer_len);
 
 #endif

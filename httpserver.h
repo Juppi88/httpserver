@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #define MAX_CONNECTIONS 128
 
@@ -30,6 +31,7 @@ struct http_response_t {
 	enum HttpMessage message;
 	const char *content;
 	const char *content_type;
+	size_t content_length; // Content length when the response data is binary.
 };
 
 typedef struct http_response_t (*handle_request_t)(struct http_request_t *request);
