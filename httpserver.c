@@ -284,9 +284,9 @@ static bool http_server_handle_static_file(int64_t client, const struct http_req
 	const char *file_name = &req_path[dir->path_len];
 
 	// Ignore requests which attempt to access a parent folder for safety reasons.
-	if (strstr(file_name, "..") != NULL) {
-		return false;
-	}
+	//if (strstr(file_name, "..") != NULL) {
+	//	return false;
+	//}
 
 	char ext[8];
 	string_get_file_extension(file_name, ext, sizeof(ext));
