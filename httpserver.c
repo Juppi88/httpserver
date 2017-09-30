@@ -305,13 +305,13 @@ static bool http_server_handle_static_file(int64_t client, const struct http_req
 	response.message = HTTP_200_OK;
 
 	// Set the correct MIME type for the requested file.
-	if (string_ends_with(req_path, ".html")) {
+	if (string_ends_with(file_name, ".html")) {
 		response.content_type = "text/html";
 	}
-	else if (string_ends_with(req_path, ".css")) {
+	else if (string_ends_with(file_name, ".css")) {
 		response.content_type = "text/css";
 	}
-	else if (string_ends_with(req_path, ".js")) {
+	else if (string_ends_with(file_name, ".js")) {
 		response.content_type = "application/javascript";
 	}
 	else {
