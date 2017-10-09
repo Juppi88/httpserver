@@ -29,7 +29,7 @@ static struct http_response_t handle_request(struct http_request_t *request)
 		response.content_type = "text/html";
 	}
 
-	printf("HTTP request - method: %s, protocol: %s, request: %s\n", request->method, request->protocol, request->request);
+	printf("%s request: IP: %s, request: %s\n", request->method, request->requester, request->request);
 
 	return response;
 }
@@ -50,7 +50,17 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	if (!http_server_initialize(port, handle_request)) {
+	// Initialize the web interface.
+	struct server_ssettings_t settings;
+	memset(&settings, 0, sizeof(settings));
+
+	settings.handler = handle_request;
+	settings.port = port;
+	settings.timeout = 100;
+	settings.max_connections = 10;
+	settings.connection_timeout = 60;
+
+	if (!http_server_initialize(settings)) {
 		printf("Failed to start the server!\n");
 		return 0;
 	}
@@ -59,7 +69,6 @@ int main(int argc, char *argv[])
 
 	for (;;) {
 		http_server_listen();
-		SLEEP(100);
 	}
 
 	http_server_shutdown();
