@@ -4,10 +4,38 @@
 #include <string.h>
 #include <stdio.h>
 #include <malloc.h>
+#include <time.h>
+
+// --------------------------------------------------------------------------------
+
+struct client_t {
+	int64_t socket;
+	struct sockaddr_in addr;
+	char *hostname;
+	time_t timeout;
+	bool terminate;
+	struct client_t *next;
+};
+
+// --------------------------------------------------------------------------------
+
+struct file_dir_entry_t {
+	char *path;
+	char *directory;
+	size_t path_len;
+	struct file_dir_entry_t *next;
+};
+
+// --------------------------------------------------------------------------------
+
+#define CONNECTION_TIMEOUT 120
 
 static bool initialized = false;
 static int64_t host_socket = -1;
-static handle_request_t request_handler = NULL;
+static handle_request_t request_handler;
+
+static struct client_t *first_connection;
+static struct file_dir_entry_t *first_dir;
 
 static char message[100000];
 static char file_buffer[100000];
@@ -19,20 +47,14 @@ static const char *messages[] = {
 	"404 Not Found", // HTTP_404_NOT_FOUND
 };
 
-
-struct file_dir_entry_t {
-	char *path;
-	char *directory;
-	size_t path_len;
-	struct file_dir_entry_t *next;
-};
-
-static struct file_dir_entry_t *first_dir = NULL;
-
 // --------------------------------------------------------------------------------
 
-static void http_server_send_response(int64_t client, const struct http_response_t *response);
-static bool http_server_handle_static_file(int64_t client, const struct http_request_t *request);
+static void http_server_process(void);
+static void http_server_process_client(struct client_t *client);
+static void http_server_send_response(struct client_t *client, const struct http_response_t *response);
+static bool http_server_handle_static_file(struct client_t *client, const struct http_request_t *request);
+
+// --------------------------------------------------------------------------------
 
 bool http_server_initialize(uint16_t port, handle_request_t handler)
 {
@@ -105,6 +127,21 @@ void http_server_shutdown(void)
 		host_socket = -1;
 	}
 
+	// Terminate all active connections.
+	for (struct client_t *client = first_connection, *tmp;
+		client != NULL;
+		client = tmp)
+	{
+		tmp = client->next;
+
+		if (client->socket >= 0) {
+			close(client->socket);
+		}
+
+		free(client->hostname);
+		free(client);
+	}
+
 	http_socket_shutdown();
 
 	// Remove all static file directory entries.
@@ -128,52 +165,137 @@ void http_server_listen(void)
 		return;
 	}
 
-	struct timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 1000;
-
+	// Create an fd_set for the collection of sockets to listen to.
 	fd_set set;
 	FD_ZERO(&set);
 	FD_SET(host_socket, &set);
 
-	// Listen to the server socket for new incoming connections.
-	if (select((int)(host_socket + 1), &set, NULL, NULL, &timeout) <= 0) {
-		return;
+	// Also find the highest socket descriptor value.
+	int64_t highest = host_socket;
+
+	for (struct client_t *client = first_connection;
+		client != NULL;
+		client = client->next) {
+
+		FD_SET(client->socket, &set);
+
+		if (client->socket > highest) {
+			highest = client->socket;
+		}
 	}
 
-	struct sockaddr_in client_addr;
-	socklen_t addr_len = sizeof(client_addr);
+	time_t now = time(NULL);
 
-	int64_t client = accept(host_socket, (struct sockaddr *)&client_addr, &addr_len);
+	struct timeval timeout;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
+
+	// Process all active sockets for incoming connectiosn and/or requests.
+	if (select((int)(highest + 1), &set, NULL, NULL, &timeout) > 0) {
+		
+		// Listen to the server socket for new incoming connections.
+		if (FD_ISSET(host_socket, &set)) {
+			http_server_process();
+		}
+		
+		// Process all active client connections.
+		for (struct client_t *client = first_connection, *previous = NULL, *tmp;
+			client != NULL;
+			previous = client, client = tmp)
+		{
+			tmp = client->next;
+
+			if (FD_ISSET(client->socket, &set)) {
+				http_server_process_client(client);
+			}
+			
+			// If the client times out or disconnects itself, terminate it.
+			if (client->timeout < now ||
+				client->terminate) {
+
+				// Update the list.
+				if (client == first_connection) {
+					first_connection = client->next;
+				}
+				else if (previous != NULL) {
+					previous->next = client->next;
+				}
+
+				// Close the connection.
+				if (client->socket >= 0) {
+					close(client->socket);
+				}
+
+				// Free data.
+				free(client->hostname);
+				free(client);
+			}
+			else {
+				previous = client;
+			}
+		}
+	}
+}
+
+static void http_server_process(void)
+{
+	struct client_t *client = malloc(sizeof(*client));
+	memset(client, 0, sizeof(*client));
+
+	// Accept a new connection.
+	socklen_t addr_len = sizeof(client->addr);
+	client->socket = accept(host_socket, (struct sockaddr *)&client->addr, &addr_len);
 
 	if (client < 0) {
-		return;
+
+		// Connection could not be made. Discard the client data.
+		free(client);
+		client = NULL;
 	}
+	else {
+		// Make the client socket non-blocking.
+		http_socket_set_non_blocking(client->socket);
 
-	http_socket_set_non_blocking(client);
+		// Set a default timeout value. We're assuming HTTP/1.1 protocol where clients want to keep the connection open.
+		client->timeout = time(NULL) + CONNECTION_TIMEOUT;
 
-	int received = recv(client, message, sizeof(message) - 1, 0);
+		// Copy the hostname of the client.
+		char ip[INET_ADDRSTRLEN], host[1024];
+		getnameinfo((struct sockaddr *)&client->addr, addr_len, host, sizeof(host), ip, sizeof(ip), 0);
 
+		size_t host_len = strlen(host);
+		client->hostname = malloc(host_len + 1);
+		strcpy(client->hostname, host);
+
+		// Add the client to the list of active connections.
+		client->next = first_connection;
+		first_connection = client;
+	}
+}
+
+static void http_server_process_client(struct client_t *client)
+{
+	int received = recv(client->socket, message, sizeof(message) - 1, 0);
+	
 	// Receiving the request from the client failed.
 	if (received < 0) {
-		goto terminate;
+		client->terminate = true;
+		return;
 	}
 
 	// Client connection was terminated unexpectedly.
 	if (received == 0) {
-		goto terminate;
+		client->terminate = true;
+		return;
 	}
-
-	message[received] = 0;
 	
+	message[received] = 0;
+
 	// Parse the request and respond to it.
 	struct http_request_t request;
 
-	char ip[INET_ADDRSTRLEN], host[1024];
-	getnameinfo((struct sockaddr *)&client_addr, addr_len, host, sizeof(host), ip, sizeof(ip), 0);
-
 	request.method = strtok(message, " \t\n");
-	request.hostname = host;
+	request.hostname = client->hostname;
 
 	// The library only serves GET and POST request.
 	if (strncmp(request.method, "GET\0", 4) == 0 ||
@@ -205,13 +327,11 @@ void http_server_listen(void)
 		}
 	}
 
-terminate:
-
-	// Terminate the client connection.
-	close(client);
+	// Extend the timeout value.
+	client->timeout = time(NULL) + CONNECTION_TIMEOUT;
 }
 
-static void http_server_send_response(int64_t client, const struct http_response_t *response)
+static void http_server_send_response(struct client_t *client, const struct http_response_t *response)
 {
 	if (response->message >= NUM_MESSAGES) {
 		return;
@@ -221,13 +341,16 @@ static void http_server_send_response(int64_t client, const struct http_response
 	const char *origin = "Access-Control-Allow-Origin: *\n";
 
 	char buffer[1024];
-	int len = snprintf(buffer, sizeof(buffer), "HTTP/1.0 %s\n", messages[response->message]);
+	int len = snprintf(buffer, sizeof(buffer), "HTTP/1.1 %s\n", messages[response->message]);
 
-	send(client, buffer, len, 0);
+	send(client->socket, buffer, len, 0);
+
+	len = snprintf(buffer, sizeof(buffer), "Connection: keep-alive\n");
+	send(client->socket, buffer, len, 0);
 
 	// Tell the client to not cache our response.
 	len = snprintf(buffer, sizeof(buffer), "Cache-Control: max-age=0, no-cache, must-revalidate, proxy-revalidate\n");
-	send(client, buffer, len, 0);
+	send(client->socket, buffer, len, 0);
 
 	// Write the content if there is any.
 	if (response->content != NULL && response->content_type != NULL) {
@@ -240,22 +363,22 @@ static void http_server_send_response(int64_t client, const struct http_response
 		}
 
 		len = snprintf(buffer, sizeof(buffer), "Content-Length: %u\n", (uint32_t)content_length);
-		send(client, buffer, len, 0);
+		send(client->socket, buffer, len, 0);
 
 		len = snprintf(buffer, sizeof(buffer), "Content-Type: %s\n", response->content_type);
-		send(client, buffer, len, 0);
+		send(client->socket, buffer, len, 0);
 
 		len = snprintf(buffer, sizeof(buffer), "%s\n", origin);
-		send(client, buffer, len, 0);
+		send(client->socket, buffer, len, 0);
 
-		send(client, response->content, (int)content_length, 0);
+		send(client->socket, response->content, (int)content_length, 0);
 	}
 	else {
-		send(client, origin, strlen(origin), 0);
+		send(client->socket, origin, strlen(origin), 0);
 	}
 }
 
-static bool http_server_handle_static_file(int64_t client, const struct http_request_t *request)
+static bool http_server_handle_static_file(struct client_t *client, const struct http_request_t *request)
 {
 	const char *req_path = request->request;
 	
