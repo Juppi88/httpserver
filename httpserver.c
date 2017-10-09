@@ -28,7 +28,7 @@ struct file_dir_entry_t {
 
 // --------------------------------------------------------------------------------
 
-static struct server_ssettings_t settings;
+static struct server_settings_t settings;
 
 static bool initialized = false;
 static int64_t host_socket = -1;
@@ -49,7 +49,7 @@ static const char *http_server_get_message_text(enum http_message_t message);
 
 // --------------------------------------------------------------------------------
 
-bool http_server_initialize(struct server_ssettings_t configuration)
+bool http_server_initialize(struct server_settings_t configuration)
 {
 	if (initialized) {
 		return false;

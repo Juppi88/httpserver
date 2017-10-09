@@ -34,7 +34,7 @@ struct http_response_t {
 
 typedef struct http_response_t(*handle_request_t)(struct http_request_t *request);
 
-struct server_ssettings_t {
+struct server_settings_t {
 	handle_request_t handler;		// Handler method for custom requests (such as dynamic data in JSON format)
 
 	uint16_t port;					// Port this web server is listening on
@@ -52,7 +52,7 @@ struct server_ssettings_t {
 
 // --------------------------------------------------------------------------------
 
-extern bool http_server_initialize(struct server_ssettings_t configuration);
+extern bool http_server_initialize(struct server_settings_t configuration);
 extern void http_server_shutdown(void);
 extern void http_server_listen(void);
 
