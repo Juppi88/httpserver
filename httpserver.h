@@ -20,7 +20,7 @@ enum http_message_t {
 };
 
 struct http_request_t {
-	const char *requester;		// Hostname of the client who performed the request
+	const char *requester;		// IP address of the client who performed the request
 	const char *method;			// The method used by the client. Currently either 'GET' or 'POST' is recognised
 	const char *request;		// Path to the resource requested by the client
 };

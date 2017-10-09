@@ -11,7 +11,7 @@
 struct client_t {
 	int64_t socket;
 	struct sockaddr_in addr;
-	char *hostname;
+	char *ip_address;
 	time_t timeout;
 	bool terminate;
 	struct client_t *next;
@@ -141,7 +141,7 @@ void http_server_shutdown(void)
 			close(client->socket);
 		}
 
-		free(client->hostname);
+		free(client->ip_address);
 		free(client);
 	}
 
@@ -230,7 +230,7 @@ void http_server_listen(void)
 				}
 
 				// Free data.
-				free(client->hostname);
+				free(client->ip_address);
 				free(client);
 			}
 			else {
@@ -277,11 +277,11 @@ static void http_server_process(void)
 {
 	struct client_t *client = malloc(sizeof(*client));
 	memset(client, 0, sizeof(*client));
-
+	
 	// Accept a new connection.
 	socklen_t addr_len = sizeof(client->addr);
 	client->socket = accept(host_socket, (struct sockaddr *)&client->addr, &addr_len);
-
+	
 	if (client < 0) {
 
 		// Connection could not be made. Discard the client data.
@@ -295,13 +295,12 @@ static void http_server_process(void)
 		// Set a default timeout value. We're assuming HTTP/1.1 protocol where clients want to keep the connection open.
 		client->timeout = time(NULL) + settings.connection_timeout;
 
-		// Copy the hostname of the client.
-		char ip[INET_ADDRSTRLEN], host[1024];
-		getnameinfo((struct sockaddr *)&client->addr, addr_len, host, sizeof(host), ip, sizeof(ip), 0);
+		// Store the client's IP address.
+		char ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &client->addr.sin_addr, ip, sizeof(ip));
 
-		size_t host_len = strlen(host);
-		client->hostname = malloc(host_len + 1);
-		strcpy(client->hostname, host);
+		client->ip_address = malloc(strlen(ip) + 1);
+		strcpy(client->ip_address, ip);
 
 		// Add the client to the list of active connections.
 		client->next = first_connection;
@@ -331,7 +330,7 @@ static void http_server_process_client(struct client_t *client)
 	struct http_request_t request;
 
 	request.method = strtok(message, " \t\n");
-	request.requester = client->hostname;
+	request.requester = client->ip_address;
 
 	// The library only serves GET and POST request.
 	if (strncmp(request.method, "GET\0", 4) == 0 ||
@@ -392,8 +391,11 @@ static void http_server_send_response(struct client_t *client, const struct http
 
 	send(client->socket, buffer, len, 0);
 
-	len = snprintf(buffer, sizeof(buffer), "Connection: keep-alive\n");
-	send(client->socket, buffer, len, 0);
+	// Keep the connection alive unless the client wants to terminate it.
+	if (!client->terminate) {
+		len = snprintf(buffer, sizeof(buffer), "Connection: keep-alive\n");
+		send(client->socket, buffer, len, 0);
+	}
 
 	// Tell the client to not cache our response.
 	len = snprintf(buffer, sizeof(buffer), "Cache-Control: max-age=0, no-cache, must-revalidate, proxy-revalidate\n");
