@@ -40,7 +40,7 @@ struct server_ssettings_t {
 	uint16_t port;					// Port this web server is listening on
 	uint16_t max_connections;		// Maximum connections this web server can handle simultaneously
 	uint32_t timeout;				// Socket polling timeout in milliseconds (can be left to zero)
-	uint32_t connection_timeout;	// Connection timeout in seconds for clients who want to keep the connection alive between requests
+	uint32_t connection_timeout;	// Connection timeout in seconds for clients who want to keep the connection alive between requests. 60 seconds is a good value
 
 	struct server_directory_t {		// List of directories containing static files
 		const char *path;				// The URL path which links to this directory entry

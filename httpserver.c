@@ -168,18 +168,51 @@ void http_server_listen(void)
 		return;
 	}
 
-	// Create an fd_set for the collection of sockets to listen to.
+	time_t now = time(NULL);
+
+	// Create a set for the collection of sockets to listen to.
 	fd_set set;
 	FD_ZERO(&set);
 	FD_SET(host_socket, &set);
 
-	// Also find the highest socket descriptor value.
+	// Add the active client sockets to the set and find the highest socket descriptor value.
+	// While doing this, terminate all timed out connections.
 	int64_t highest = host_socket;
 
-	for (struct client_t *client = first_connection;
-		client != NULL;
-		client = client->next) {
+	for (struct client_t *client = first_connection, *previous = NULL, *tmp;
+		 client != NULL;
+		 previous = client, client = tmp) {
 
+		tmp = client->next;
+
+		// If the client times out or wants to disconnects itself, terminate it.
+		if (client->timeout < now ||
+			client->terminate) {
+
+			// Update the list.
+			if (client == first_connection) {
+				first_connection = client->next;
+			}
+			else if (previous != NULL) {
+				previous->next = client->next;
+			}
+			
+			// Close the connection.
+			if (client->socket >= 0) {
+				close(client->socket);
+			}
+
+			// Free data.
+			free(client->ip_address);
+			free(client);
+
+			continue;
+		}
+		else {
+			previous = client;
+		}
+
+		// Client is not terminated, add the socket to the set.
 		FD_SET(client->socket, &set);
 
 		if (client->socket > highest) {
@@ -187,13 +220,11 @@ void http_server_listen(void)
 		}
 	}
 
-	time_t now = time(NULL);
-
 	struct timeval timeout;
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 1000L * (long)settings.timeout;
 
-	// Process all active sockets for incoming connectiosn and/or requests.
+	// Process all active sockets for incoming connections and/or requests.
 	if (select((int)(highest + 1), &set, NULL, NULL, &timeout) > 0) {
 		
 		// Listen to the server socket for new incoming connections.
@@ -202,39 +233,12 @@ void http_server_listen(void)
 		}
 		
 		// Process all active client connections.
-		for (struct client_t *client = first_connection, *previous = NULL, *tmp;
+		for (struct client_t *client = first_connection;
 			client != NULL;
-			previous = client, client = tmp)
+			client = client->next)
 		{
-			tmp = client->next;
-
 			if (FD_ISSET(client->socket, &set)) {
 				http_server_process_client(client);
-			}
-			
-			// If the client times out or disconnects itself, terminate it.
-			if (client->timeout < now ||
-				client->terminate) {
-
-				// Update the list.
-				if (client == first_connection) {
-					first_connection = client->next;
-				}
-				else if (previous != NULL) {
-					previous->next = client->next;
-				}
-
-				// Close the connection.
-				if (client->socket >= 0) {
-					close(client->socket);
-				}
-
-				// Free data.
-				free(client->ip_address);
-				free(client);
-			}
-			else {
-				previous = client;
 			}
 		}
 	}
@@ -345,12 +349,15 @@ static void http_server_process_client(struct client_t *client)
 		char *header_line = &protocol[strlen(protocol) + 1], *header, *value;
 		bool keep_alive = false;
 		
-		while ((header_line = string_parse_header_text(header_line, &header, &value)) != NULL) {
+		do {
+			header_line = string_parse_header_text(header_line, &header, &value);
+
 			if (strcmp(header, "Connection:") == 0) {
 				keep_alive = (strcmp(value, "keep-alive") == 0);
 				break;
 			}
 		}
+		while (header_line != NULL);
 
 		// If the client didn't specify a keep-alive header, terminate the connection after serving the request.
 		client->terminate = !keep_alive;
