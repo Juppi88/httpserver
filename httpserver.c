@@ -85,6 +85,10 @@ bool http_server_initialize(struct server_settings_t configuration)
 			continue;
 		}
 
+		// Force the socket to reuse the address even if it's still in use.
+		int opt = true;
+		setsockopt(host_socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
+
 		if (bind(host_socket, p->ai_addr, (int)p->ai_addrlen) == 0) {
 			break;
 		}
