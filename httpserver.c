@@ -28,37 +28,34 @@ struct file_dir_entry_t {
 
 // --------------------------------------------------------------------------------
 
-#define CONNECTION_TIMEOUT 120
+static struct server_ssettings_t settings;
 
 static bool initialized = false;
 static int64_t host_socket = -1;
-static handle_request_t request_handler;
-
 static struct client_t *first_connection;
 static struct file_dir_entry_t *first_dir;
 
 static char message[100000];
 static char file_buffer[100000];
 
-static const char *messages[] = {
-	"200 OK", // HTTP_200_OK
-	"400 Bad Request", // HTTP_400_BAD_REQUEST
-	"401 Unauthorized", // HTTP_401_UNAUTHORIZED
-	"404 Not Found", // HTTP_404_NOT_FOUND
-};
-
 // --------------------------------------------------------------------------------
 
+static void http_server_add_static_directory(const char *path, const char *directory);
 static void http_server_process(void);
 static void http_server_process_client(struct client_t *client);
 static void http_server_send_response(struct client_t *client, const struct http_response_t *response);
 static bool http_server_handle_static_file(struct client_t *client, const struct http_request_t *request);
+static const char *http_server_get_message_text(enum http_message_t message);
 
 // --------------------------------------------------------------------------------
 
-bool http_server_initialize(uint16_t port, handle_request_t handler)
+bool http_server_initialize(struct server_ssettings_t configuration)
 {
-	initialized = true;
+	if (initialized) {
+		return false;
+	}
+
+	settings = configuration;
 	host_socket = -1;
 
 	// Initialize sockets. On Windows this initializes WinSock.
@@ -73,7 +70,7 @@ bool http_server_initialize(uint16_t port, handle_request_t handler)
 	hints.ai_flags = AI_PASSIVE;
 
 	char service[8];
-	snprintf(service, sizeof(service), "%u", port);
+	snprintf(service, sizeof(service), "%u", settings.port);
 
 	if (getaddrinfo(NULL, service, &hints, &res) != 0) {
 		http_server_shutdown();
@@ -102,15 +99,21 @@ bool http_server_initialize(uint16_t port, handle_request_t handler)
 	freeaddrinfo(res);
 
 	// Start listening for incoming connections.
-	if (listen(host_socket, MAX_CONNECTIONS) != 0) {
+	if (listen(host_socket, settings.max_connections) != 0) {
 		http_server_shutdown();
 		return false;
 	}
 
 	int opt = 3;
-	setsockopt(host_socket, SOL_SOCKET, SO_RCVLOWAT, &opt, sizeof(opt));
+	setsockopt(host_socket, SOL_SOCKET, SO_RCVLOWAT, (const char *)&opt, sizeof(opt));
 
-	request_handler = handler;
+	// Add static file locations.
+	for (size_t i = 0; i < settings.directories_len; ++i) {
+		http_server_add_static_directory(settings.directories[i].path, settings.directories[i].directory);
+	}
+
+	initialized = true;
+
 	return true;
 }
 
@@ -188,7 +191,7 @@ void http_server_listen(void)
 
 	struct timeval timeout;
 	timeout.tv_sec = 0;
-	timeout.tv_usec = 0;
+	timeout.tv_usec = 1000L * (long)settings.timeout;
 
 	// Process all active sockets for incoming connectiosn and/or requests.
 	if (select((int)(highest + 1), &set, NULL, NULL, &timeout) > 0) {
@@ -237,6 +240,39 @@ void http_server_listen(void)
 	}
 }
 
+static void http_server_add_static_directory(const char *path, const char *directory)
+{
+	if (path == NULL || directory == NULL) {
+		return;
+	}
+
+	// Allocate a new static content folder entry and duplicate the path names to it.
+	struct file_dir_entry_t *dir = malloc(sizeof(*dir));
+
+	size_t path_len = strlen(path);
+	char *path_copy = (char *)malloc(path_len + 1);
+	char *directory_copy = (char *)malloc(strlen(directory) + 1);
+
+	if (dir == NULL || path_copy == NULL || directory_copy == NULL) {
+		return;
+	}
+
+	strcpy(path_copy, path);
+	strcpy(directory_copy, directory);
+
+	dir->path = path_copy;
+	dir->directory = directory_copy;
+	dir->path_len = path_len;
+	dir->next = NULL;
+
+	// Add the entry to the list of directories to serve static content from.
+	if (first_dir != NULL) {
+		dir->next = first_dir;
+	}
+
+	first_dir = dir;
+}
+
 static void http_server_process(void)
 {
 	struct client_t *client = malloc(sizeof(*client));
@@ -257,7 +293,7 @@ static void http_server_process(void)
 		http_socket_set_non_blocking(client->socket);
 
 		// Set a default timeout value. We're assuming HTTP/1.1 protocol where clients want to keep the connection open.
-		client->timeout = time(NULL) + CONNECTION_TIMEOUT;
+		client->timeout = time(NULL) + settings.connection_timeout;
 
 		// Copy the hostname of the client.
 		char ip[INET_ADDRSTRLEN], host[1024];
@@ -295,18 +331,33 @@ static void http_server_process_client(struct client_t *client)
 	struct http_request_t request;
 
 	request.method = strtok(message, " \t\n");
-	request.hostname = client->hostname;
+	request.requester = client->hostname;
 
 	// The library only serves GET and POST request.
 	if (strncmp(request.method, "GET\0", 4) == 0 ||
 		strncmp(request.method, "POST\0", 5) == 0) {
 
+		// Parse the requested resource and the used protocol.
 		request.request = strtok(NULL, " \t");
-		request.protocol = strtok(NULL, " \t\n\r");
+		char *protocol = strtok(NULL, " \t\n\r");
 
-		// Only HTTP 1.0/1.1 are supported right now.
-		if (strncmp(request.protocol, "HTTP/1.0", 8) != 0 &&
-			strncmp(request.protocol, "HTTP/1.1", 8) != 0) {
+		// The rest of the request message is a list of headers.
+		// Find out whether the client wants to keep the connection alive.
+		char *header_line = &protocol[strlen(protocol) + 1], *header, *value;
+		bool keep_alive = false;
+		
+		while ((header_line = string_parse_header_text(header_line, &header, &value)) != NULL) {
+			if (strcmp(header, "Connection:") == 0) {
+				keep_alive = (strcmp(value, "keep-alive") == 0);
+				break;
+			}
+		}
+
+		// If the client didn't specify a keep-alive header, terminate the connection after serving the request.
+		client->terminate = !keep_alive;
+
+		// Only HTTP 1.1 is supported right now.
+		if (strncmp(protocol, "HTTP/1.1", 8) != 0) {
 
 			struct http_response_t failure;
 			failure.message = HTTP_400_BAD_REQUEST;
@@ -320,28 +371,24 @@ static void http_server_process_client(struct client_t *client)
 
 			// If the request was not requesting anything from a static content path,
 			// let the user of this library handle the request as they see fit.
-			if (request_handler != NULL) {
-				struct http_response_t response = request_handler(&request);
+			if (settings.handler != NULL) {
+				struct http_response_t response = settings.handler(&request);
 				http_server_send_response(client, &response);
 			}
 		}
 	}
 
 	// Extend the timeout value.
-	client->timeout = time(NULL) + CONNECTION_TIMEOUT;
+	client->timeout = time(NULL) + settings.connection_timeout;
 }
 
 static void http_server_send_response(struct client_t *client, const struct http_response_t *response)
 {
-	if (response->message >= NUM_MESSAGES) {
-		return;
-	}
-
 	// Write the header.
 	const char *origin = "Access-Control-Allow-Origin: *\n";
 
 	char buffer[1024];
-	int len = snprintf(buffer, sizeof(buffer), "HTTP/1.1 %s\n", messages[response->message]);
+	int len = snprintf(buffer, sizeof(buffer), "HTTP/1.1 %s\n", http_server_get_message_text(response->message));
 
 	send(client->socket, buffer, len, 0);
 
@@ -486,35 +533,22 @@ static bool http_server_handle_static_file(struct client_t *client, const struct
 	return true;
 }
 
-void http_server_add_static_directory(const char *path, const char *directory)
+static const char *http_server_get_message_text(enum http_message_t message)
 {
-	if (path == NULL || directory == NULL) {
-		return;
+	switch (message) {
+
+	case HTTP_200_OK:
+		return "200 OK";
+
+	case HTTP_400_BAD_REQUEST:
+		return "400 Bad Request";
+
+	case HTTP_401_UNAUTHORIZED:
+		return "401 Unauthorized";
+
+	case HTTP_404_NOT_FOUND:
+		return "404 Not Found";
 	}
 
-	// Allocate a new static content folder entry and duplicate the path names to it.
-	struct file_dir_entry_t *dir = malloc(sizeof(*dir));
-
-	size_t path_len = strlen(path);
-	char *path_copy = (char *)malloc(path_len + 1);
-	char *directory_copy = (char *)malloc(strlen(directory) + 1);
-
-	if (dir == NULL || path_copy == NULL || directory_copy == NULL) {
-		return;
-	}
-
-	strcpy(path_copy, path);
-	strcpy(directory_copy, directory);
-
-	dir->path = path_copy;
-	dir->directory = directory_copy;
-	dir->path_len = path_len;
-	dir->next = NULL;
-
-	// Add the entry to the list of directories to serve static content from.
-	if (first_dir != NULL) {
-		dir->next = first_dir;
-	}
-
-	first_dir = dir;
+	return NULL;
 }

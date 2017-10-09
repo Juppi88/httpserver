@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <ctype.h>
 
 void string_get_file_extension(const char *str, char* buffer, size_t buffer_len)
@@ -36,4 +37,77 @@ void string_get_file_extension(const char *str, char* buffer, size_t buffer_len)
 			return;
 		}
 	}
+}
+
+static char *string_remove_leading_white_space(char* str)
+{
+	if (str == NULL) {
+		return NULL;
+	}
+
+	for (;;) {
+		switch (*str) {
+		case ' ':
+		case '\n':
+		case '\r':
+		case '\t':
+			*str++ = '\0';
+			continue;
+
+		case '\0':
+			return NULL;
+		}
+		break;
+	}
+
+	return str;
+}
+
+static char *string_skip_non_white_space(char *str, bool skip_until_new_line)
+{
+	if (str == NULL) {
+		return NULL;
+	}
+
+	for (;;) {
+		switch (*str) {
+		case ' ':
+		case '\t':
+			if (!skip_until_new_line) {
+				return str;
+			}
+			break;
+
+		case '\n':
+		case '\r':
+			return str;
+
+		case '\0':
+			return NULL;
+		}
+
+		++str;
+	}
+
+	return str;
+}
+
+char *string_parse_header_text(char *str, char **header, char **value)
+{
+	// Remove all leading white space. The starting string is the header.
+	str = string_remove_leading_white_space(str);
+
+	*header = str;
+
+	// Skip the header text and possible white space after it, which gets to the header value.
+	str = string_skip_non_white_space(str, false);
+	str = string_remove_leading_white_space(str);
+
+	*value = str;
+
+	// Skip the header value and terminate the string.
+	str = string_skip_non_white_space(str, true);
+	str = string_remove_leading_white_space(str);
+
+	return str;
 }
