@@ -485,7 +485,7 @@ static bool http_server_handle_static_file(struct client_t *client, const struct
 		snprintf(path, sizeof(path), "%s/%s", dir->directory, file_name);
 	}
 
-	FILE *file = fopen(path, "r");
+	FILE *file = fopen(path, "rb");
 
 	// Requested file does not exist or it can't be opened.
 	if (file == NULL) {
@@ -519,27 +519,27 @@ static bool http_server_handle_static_file(struct client_t *client, const struct
 	}
 	else if (strcmp(ext, ".png") == 0) {
 		response.content_type = "image/png";
-		response.content_length = length;
 	}
 	else if (strcmp(ext, ".jpg") == 0) {
 		response.content_type = "image/jpeg";
-		response.content_length = length;
 	}
 	else if (strcmp(ext, ".gif") == 0) {
 		response.content_type = "image/gif";
-		response.content_length = length;
 	}
 	else {
 		response.content_type = "text/plain";
 	}
 
 	// Read the contents of the file into a buffer which we can send to the requester.
-	size_t read = fread(file_buffer, 1, length, file);
+	size_t elements_read = fread(file_buffer, length, 1, file);
 	fclose(file);
 
-	file_buffer[read] = 0;
+	response.content_length = elements_read * length;
 	response.content = file_buffer;
 
+	// Null terminate the content buffer.
+	file_buffer[response.content_length] = 0;
+	
 	// Send a response along with the requested file.
 	http_server_send_response(client, &response);
 

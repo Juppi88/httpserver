@@ -29,7 +29,7 @@ struct http_response_t {
 	enum http_message_t message; // Request status code (see the enum above)
 	const char *content;		// Content to be delivered to the client
 	const char *content_type;	// MIME type of the content
-	size_t content_length;		// Content length when the response data is binary. For text should be left to 0
+	size_t content_length;		// Length for the content to be delivered, in bytes
 };
 
 typedef struct http_response_t(*handle_request_t)(struct http_request_t *request);
