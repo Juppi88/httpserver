@@ -11,6 +11,8 @@
 
 	#define close closesocket
 	#define SHUT_RDWR 2
+
+	typedef SOCKET socket_t;
 #else
 	#include <unistd.h>
 	#include <sys/types.h>
@@ -20,10 +22,12 @@
 	#include <arpa/inet.h>
 	#include <netdb.h>
 	#include <fcntl.h>
+
+	typedef int socket_t;
 #endif
 
 void http_socket_initialize(void);
 void http_socket_shutdown(void);
-void http_socket_set_non_blocking(int64_t sock);
+void http_socket_set_non_blocking(socket_t sock);
 
 #endif

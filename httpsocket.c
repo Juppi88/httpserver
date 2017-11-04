@@ -13,7 +13,7 @@ void http_socket_shutdown(void)
 	WSACleanup();
 }
 
-void http_socket_set_non_blocking(int64_t sock)
+void http_socket_set_non_blocking(socket_t sock)
 {
 	u_long mode = 1;
 	ioctlsocket(sock, FIONBIO, &mode);
@@ -24,7 +24,7 @@ void http_socket_set_non_blocking(int64_t sock)
 void http_socket_initialize(void) {}
 void http_socket_shutdown(void) {}
 
-void http_socket_set_non_blocking(int64_t sock)
+void http_socket_set_non_blocking(socket_t sock)
 {
 	int flags = fcntl(sock, F_GETFL, 0);
 

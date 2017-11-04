@@ -9,7 +9,7 @@
 // --------------------------------------------------------------------------------
 
 struct client_t {
-	int64_t socket;
+	socket_t socket;
 	struct sockaddr_in addr;
 	char *ip_address;
 	time_t timeout;
@@ -31,7 +31,7 @@ struct file_dir_entry_t {
 static struct server_settings_t settings;
 
 static bool initialized = false;
-static int64_t host_socket = -1;
+static socket_t host_socket = -1;
 static struct client_t *first_connection;
 static struct file_dir_entry_t *first_dir;
 
@@ -181,7 +181,7 @@ void http_server_listen(void)
 
 	// Add the active client sockets to the set and find the highest socket descriptor value.
 	// While doing this, terminate all timed out connections.
-	int64_t highest = host_socket;
+	socket_t highest = host_socket;
 
 	for (struct client_t *client = first_connection, *previous = NULL, *tmp;
 		 client != NULL;
