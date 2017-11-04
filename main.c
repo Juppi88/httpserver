@@ -36,11 +36,18 @@ static struct http_response_t handle_request(struct http_request_t *request)
 
 int main(int argc, char *argv[])
 {
-	uint16_t port = 8080;
+	uint16_t port = 80;
+	const char *static_directory = NULL;
+	struct server_directory_t directories[] = { { "/", "" } };
 
 	for (int i = 0; i < argc; ++i) {
 		if (strcmp(argv[i], "--port") == 0 && ++i < argc) {
 			port = (uint16_t)atoi(argv[i]);
+			break;
+		}
+
+		else if (strcmp(argv[i], "--path") == 0 && ++i < argc) {
+			static_directory = argv[i];
 			break;
 		}
 	}
@@ -56,9 +63,17 @@ int main(int argc, char *argv[])
 
 	settings.handler = handle_request;
 	settings.port = port;
-	settings.timeout = 100;
+	settings.timeout = 10;
 	settings.max_connections = 10;
 	settings.connection_timeout = 60;
+
+	// Set a folder to serve static content from.
+	if (static_directory != NULL) {
+		directories[0].directory = static_directory;
+
+		settings.directories = directories;
+		settings.directories_len = 1;
+	}
 
 	if (!http_server_initialize(settings)) {
 		printf("Failed to start the server!\n");
