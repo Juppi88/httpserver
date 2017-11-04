@@ -3,31 +3,23 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#ifdef _WIN32
-#include <Windows.h>
-#define SLEEP(x) Sleep(x)
-#else
-#include <time.h>
-#define SLEEP(x)\
-	struct timespec t;\
-	t.tv_sec = 0;\
-	t.tv_nsec = 1000000L * x;\
-	nanosleep(&t, NULL)
-#endif
-
 static struct http_response_t handle_request(struct http_request_t *request)
 {
 	struct http_response_t response;
 	memset(&response, 0, sizeof(response));
 
-	if (strcmp(request->request, "/") == 0) {
+	if (strcmp(request->request, "/test") == 0) {
 		response.message = HTTP_200_OK;
+		response.content = "<html><body><h1>:) Everything seems to work!</h1></body></html>\n";
 	}
 	else {
 		response.message = HTTP_404_NOT_FOUND;
 		response.content = "<html><body><h1>Whoops, 404!</h1></body></html>\n";
-		response.content_type = "text/html";
+
 	}
+
+	response.content_type = "text/html";
+	response.content_length = strlen(response.content);
 
 	printf("%s request: IP: %s, request: %s\n", request->method, request->requester, request->request);
 
@@ -38,7 +30,6 @@ int main(int argc, char *argv[])
 {
 	uint16_t port = 80;
 	const char *static_directory = NULL;
-	struct server_directory_t directories[] = { { "/", "" } };
 
 	for (int i = 0; i < argc; ++i) {
 		if (strcmp(argv[i], "--port") == 0 && ++i < argc) {
@@ -58,6 +49,8 @@ int main(int argc, char *argv[])
 	}
 
 	// Initialize the web interface.
+	struct server_directory_t directories[] = { { "/", "" } };
+
 	struct server_settings_t settings;
 	memset(&settings, 0, sizeof(settings));
 
