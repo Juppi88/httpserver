@@ -185,7 +185,7 @@ void http_server_listen(void)
 
 	for (struct client_t *client = first_connection, *previous = NULL, *tmp;
 		 client != NULL;
-		 previous = client, client = tmp) {
+		 client = tmp) {
 
 		tmp = client->next;
 
