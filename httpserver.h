@@ -32,7 +32,7 @@ struct http_response_t {
 	size_t content_length;		// Length for the content to be delivered, in bytes
 };
 
-typedef struct http_response_t(*handle_request_t)(struct http_request_t *request);
+typedef struct http_response_t(*handle_request_t)(struct http_request_t *request, void *context);
 
 struct server_settings_t {
 	handle_request_t handler;		// Handler method for custom requests (such as dynamic data in JSON format)
@@ -48,6 +48,8 @@ struct server_settings_t {
 	} *directories;
 	
 	size_t directories_len;			// Number of items on the list above
+
+	void *context;					// User specified context data. Can be NULL.
 };
 
 // --------------------------------------------------------------------------------

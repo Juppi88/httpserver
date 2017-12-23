@@ -382,7 +382,7 @@ static void http_server_process_client(struct client_t *client)
 			// If the request was not requesting anything from a static content path,
 			// let the user of this library handle the request as they see fit.
 			if (settings.handler != NULL) {
-				struct http_response_t response = settings.handler(&request);
+				struct http_response_t response = settings.handler(&request, settings.context);
 				http_server_send_response(client, &response);
 			}
 		}
