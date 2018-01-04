@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-static struct http_response_t handle_request(struct http_request_t *request)
+static struct http_response_t handle_request(struct http_request_t *request, void *context)
 {
 	struct http_response_t response;
 	memset(&response, 0, sizeof(response));
@@ -15,7 +15,6 @@ static struct http_response_t handle_request(struct http_request_t *request)
 	else {
 		response.message = HTTP_404_NOT_FOUND;
 		response.content = "<html><body><h1>Whoops, 404!</h1></body></html>\n";
-
 	}
 
 	response.content_type = "text/html";
