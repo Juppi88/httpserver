@@ -372,7 +372,7 @@ static void http_server_process_client(struct client_t *client)
 		while (header_line != NULL);
 
 		// The rest of the data is the request body preceeded by CRLF.
-		request.body = &header_line[2];
+		request.content = &header_line[2];
 
 		// If the client didn't specify a keep-alive header, terminate the connection after serving the request.
 		client->terminate = !keep_alive;
