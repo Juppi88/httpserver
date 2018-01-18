@@ -342,26 +342,37 @@ static void http_server_process_client(struct client_t *client)
 
 	// The library only serves GET and POST request.
 	if (strncmp(request.method, "GET\0", 4) == 0 ||
-		strncmp(request.method, "POST\0", 5) == 0) {
+		strncmp(request.method, "POST\0", 5) == 0 ||
+		strncmp(request.method, "PUT\0", 4) == 0 ||
+		strncmp(request.method, "DELETE\0", 7) == 0) {
 
 		// Parse the requested resource and the used protocol.
 		request.request = strtok(NULL, " \t");
 		char *protocol = strtok(NULL, " \t\n\r");
 
-		// The rest of the request message is a list of headers.
-		// Find out whether the client wants to keep the connection alive.
+		// The rest of the request message is a list of headers and the request body.
+		// Read all the headers and find out whether the client wants to keep the connection alive.
 		char *header_line = &protocol[strlen(protocol) + 1], *header, *value;
 		bool keep_alive = false;
 		
 		do {
+			// Empty line ending in a CRLF indicates the end of headers and the start of request body.
+			if (strncmp(header_line, "\r\n", 2) == 0) {
+				break;
+			}
+
+			// Parse the header line and split it into the header and value strings.
 			header_line = string_parse_header_text(header_line, &header, &value);
 
+			// If the name of the header is Connection, check its value.
 			if (strcmp(header, "Connection:") == 0) {
 				keep_alive = (strcmp(value, "keep-alive") == 0);
-				break;
 			}
 		}
 		while (header_line != NULL);
+
+		// The rest of the data is the request body preceeded by CRLF.
+		request.body = &header_line[2];
 
 		// If the client didn't specify a keep-alive header, terminate the connection after serving the request.
 		client->terminate = !keep_alive;
@@ -553,14 +564,32 @@ static const char *http_server_get_message_text(enum http_message_t message)
 	case HTTP_200_OK:
 		return "200 OK";
 
+	case HTTP_201_CREATED:
+		return "201 Created";
+
+	case HTTP_204_NO_CONTENT:
+		return "204 No Content";
+
+	case HTTP_304_NOT_MODIFIED:
+		return "304 Not Modified";
+
 	case HTTP_400_BAD_REQUEST:
 		return "400 Bad Request";
 
 	case HTTP_401_UNAUTHORIZED:
 		return "401 Unauthorized";
 
+	case HTTP_403_FORBIDDEN:
+		return "403 Forbidden";
+
 	case HTTP_404_NOT_FOUND:
 		return "404 Not Found";
+
+	case HTTP_409_CONFLICT:
+		return "409 Conflict";
+
+	case HTTP_500_INTERNAL_SERVER_ERROR:
+		return "500 Internal Server Error";
 	}
 
 	return NULL;

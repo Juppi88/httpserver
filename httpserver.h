@@ -14,15 +14,22 @@ extern "C" {
 
 enum http_message_t {
 	HTTP_200_OK = 200,
+	HTTP_201_CREATED = 201,
+	HTTP_204_NO_CONTENT = 204,
+	HTTP_304_NOT_MODIFIED = 304,
 	HTTP_400_BAD_REQUEST = 400,
 	HTTP_401_UNAUTHORIZED = 401,
+	HTTP_403_FORBIDDEN = 403,
 	HTTP_404_NOT_FOUND = 404,
+	HTTP_409_CONFLICT = 409,
+	HTTP_500_INTERNAL_SERVER_ERROR = 500,
 };
 
 struct http_request_t {
 	const char *requester;		// IP address of the client who performed the request
-	const char *method;			// The method used by the client. Currently either 'GET' or 'POST' is recognised
+	const char *method;			// The method used by the client. Currently 'GET', 'POST', 'PUT' and 'DELETE' are recognised
 	const char *request;		// Path to the resource requested by the client
+	const char *content;		// Request body, usually used in POST requests
 };
 
 struct http_response_t {

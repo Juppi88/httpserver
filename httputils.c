@@ -92,6 +92,34 @@ static char *string_skip_non_white_space(char *str, bool skip_until_new_line)
 	return str;
 }
 
+static char *string_skip_past_line_break(char* str)
+{
+	if (str == NULL) {
+		return NULL;
+	}
+
+	for (;;) {
+		switch (*str) {
+		case '\0':
+			return NULL;
+
+		case '\r':
+		case '\n':
+			++str;
+
+			if (*str == '\n' || *str == '\r') {
+				++str;
+			}
+
+			return str;
+		}
+
+		++str;
+	}
+
+	return str;
+}
+
 char *string_parse_header_text(char *str, char **header, char **value)
 {
 	// Remove all leading white space. The starting string is the header.
@@ -107,7 +135,7 @@ char *string_parse_header_text(char *str, char **header, char **value)
 
 	// Skip the header value and terminate the string.
 	str = string_skip_non_white_space(str, true);
-	str = string_remove_leading_white_space(str);
+	str = string_skip_past_line_break(str);
 
 	return str;
 }
