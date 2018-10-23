@@ -35,8 +35,8 @@ static socket_t host_socket = -1;
 static struct client_t *first_connection;
 static struct file_dir_entry_t *first_dir;
 
-static char message[100000];
-static char file_buffer[100000];
+static char message[1000000];
+static char file_buffer[1000000];
 
 // --------------------------------------------------------------------------------
 
@@ -536,6 +536,9 @@ static bool http_server_handle_static_file(struct client_t *client, const struct
 	}
 	else if (strcmp(ext, ".gif") == 0) {
 		response.content_type = "image/gif";
+	}
+	else if (strcmp(ext, ".svg") == 0) {
+		response.content_type = "image/svg+xml";
 	}
 	else {
 		response.content_type = "text/plain";
