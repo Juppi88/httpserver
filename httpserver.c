@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <time.h>
+#include <signal.h>
 
 // --------------------------------------------------------------------------------
 
@@ -116,6 +117,9 @@ bool http_server_initialize(struct server_settings_t configuration)
 		http_server_add_static_directory(settings.directories[i].path, settings.directories[i].directory);
 	}
 
+	// Ignore broken pipe signals, so they can be handled in client processing.
+	signal(SIGPIPE, SIG_IGN);
+
 	initialized = true;
 
 	return true;
@@ -142,6 +146,7 @@ void http_server_shutdown(void)
 		tmp = client->next;
 
 		if (client->socket >= 0) {
+			shutdown(client->socket, SHUT_RDWR);
 			close(client->socket);
 		}
 
@@ -203,6 +208,7 @@ void http_server_listen(void)
 			
 			// Close the connection.
 			if (client->socket >= 0) {
+				shutdown(client->socket, SHUT_RDWR);
 				close(client->socket);
 			}
 
@@ -331,7 +337,7 @@ static void http_server_process_client(struct client_t *client)
 		client->terminate = true;
 		return;
 	}
-	
+
 	message[received] = 0;
 
 	// Parse the request and respond to it.
@@ -403,6 +409,12 @@ static void http_server_process_client(struct client_t *client)
 	client->timeout = time(NULL) + settings.connection_timeout;
 }
 
+#define WRITE_VALIDATED(sock, buf, buflen)\
+	if (write((sock), (buf), (buflen)) < 0) {\
+		client->terminate = true;\
+		return;\
+	}
+
 static void http_server_send_response(struct client_t *client, const struct http_response_t *response)
 {
 	// Write the header.
@@ -411,17 +423,18 @@ static void http_server_send_response(struct client_t *client, const struct http
 	char buffer[1024];
 	int len = snprintf(buffer, sizeof(buffer), "HTTP/1.1 %s\n", http_server_get_message_text(response->message));
 
-	send(client->socket, buffer, len, 0);
+	WRITE_VALIDATED(client->socket, buffer, len);
 
 	// Keep the connection alive unless the client wants to terminate it.
 	if (!client->terminate) {
+
 		len = snprintf(buffer, sizeof(buffer), "Connection: keep-alive\n");
-		send(client->socket, buffer, len, 0);
+		WRITE_VALIDATED(client->socket, buffer, len);
 	}
 
 	// Tell the client to not cache our response.
 	len = snprintf(buffer, sizeof(buffer), "Cache-Control: max-age=0, no-cache, must-revalidate, proxy-revalidate\n");
-	send(client->socket, buffer, len, 0);
+	WRITE_VALIDATED(client->socket, buffer, len);
 
 	// Write the content if there is any.
 	if (response->content != NULL && response->content_type != NULL) {
@@ -434,18 +447,18 @@ static void http_server_send_response(struct client_t *client, const struct http
 		}
 
 		len = snprintf(buffer, sizeof(buffer), "Content-Length: %u\n", (uint32_t)content_length);
-		send(client->socket, buffer, len, 0);
+		WRITE_VALIDATED(client->socket, buffer, len);
 
 		len = snprintf(buffer, sizeof(buffer), "Content-Type: %s\n", response->content_type);
-		send(client->socket, buffer, len, 0);
+		WRITE_VALIDATED(client->socket, buffer, len);
 
 		len = snprintf(buffer, sizeof(buffer), "%s\n", origin);
-		send(client->socket, buffer, len, 0);
+		WRITE_VALIDATED(client->socket, buffer, len);
 
-		send(client->socket, response->content, (int)content_length, 0);
+		WRITE_VALIDATED(client->socket, response->content, (int)content_length);
 	}
 	else {
-		send(client->socket, origin, strlen(origin), 0);
+		WRITE_VALIDATED(client->socket, origin, strlen(origin));
 	}
 }
 
