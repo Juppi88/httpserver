@@ -455,7 +455,12 @@ static void http_server_send_response(struct client_t *client, const struct http
 		len = snprintf(buffer, sizeof(buffer), "%s\n", origin);
 		WRITE_VALIDATED(client->socket, buffer, len);
 
-		WRITE_VALIDATED(client->socket, response->content, (int)content_length);
+		// Send the response content. The data may be fragmented, so use a special method which
+		// keeps sending data until all of it has been written.
+		if (http_socket_write_all(client->socket, response->content, (int)content_length) < 0) {
+			client->terminate = true;
+			return;
+		}
 	}
 	else {
 		WRITE_VALIDATED(client->socket, origin, strlen(origin));

@@ -37,3 +37,23 @@ void http_socket_set_non_blocking(socket_t sock)
 }
 
 #endif
+
+int http_socket_write_all(socket_t sock, const void *buffer, size_t length)
+{
+	const char *p = buffer;
+	ssize_t sent;
+
+	while (length > 0) {
+
+		sent = write(sock, p, length);
+
+		if (sent <= 0) {
+			return -1;
+		}
+
+		p += sent;
+		length -= sent;
+	}
+
+	return 0;
+}

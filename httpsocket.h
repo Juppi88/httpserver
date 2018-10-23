@@ -29,5 +29,6 @@
 void http_socket_initialize(void);
 void http_socket_shutdown(void);
 void http_socket_set_non_blocking(socket_t sock);
+int http_socket_write_all(socket_t sock, const void *buffer, size_t length);
 
 #endif
