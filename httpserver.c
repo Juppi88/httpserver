@@ -44,7 +44,7 @@ static char file_buffer[1000000];
 static void http_server_add_static_directory(const char *path, const char *directory);
 static void http_server_process(void);
 static void http_server_process_client(struct client_t *client);
-static void http_server_send_response(struct client_t *client, const struct http_response_t *response);
+static void http_server_send_response(struct client_t *client, const struct http_response_t *response, bool is_static_file);
 static bool http_server_handle_static_file(struct client_t *client, const struct http_request_t *request);
 static const char *http_server_get_message_text(enum http_message_t message);
 
@@ -391,7 +391,7 @@ static void http_server_process_client(struct client_t *client)
 			failure.content = NULL;
 			failure.content_type = NULL;
 
-			http_server_send_response(client, &failure);
+			http_server_send_response(client, &failure, false);
 		}
 
 		else if (!http_server_handle_static_file(client, &request)) {
@@ -400,7 +400,7 @@ static void http_server_process_client(struct client_t *client)
 			// let the user of this library handle the request as they see fit.
 			if (settings.handler != NULL) {
 				struct http_response_t response = settings.handler(&request, settings.context);
-				http_server_send_response(client, &response);
+				http_server_send_response(client, &response, false);
 			}
 		}
 	}
@@ -415,7 +415,7 @@ static void http_server_process_client(struct client_t *client)
 		return;\
 	}
 
-static void http_server_send_response(struct client_t *client, const struct http_response_t *response)
+static void http_server_send_response(struct client_t *client, const struct http_response_t *response, bool is_static_file)
 {
 	// Write the header.
 	const char *origin = "Access-Control-Allow-Origin: *\n";
@@ -425,16 +425,23 @@ static void http_server_send_response(struct client_t *client, const struct http
 
 	WRITE_VALIDATED(client->socket, buffer, len);
 
+	// Tell the client not to cache dynamically generated responses.
+	if (!is_static_file) {
+
+		len = snprintf(buffer, sizeof(buffer), "Cache-Control: max-age=0, no-cache, must-revalidate, proxy-revalidate\n");
+		WRITE_VALIDATED(client->socket, buffer, len);
+	}
+	else {
+		len = snprintf(buffer, sizeof(buffer), "Cache-Control: max-age=2592000, public\n");
+		WRITE_VALIDATED(client->socket, buffer, len);
+	}
+
 	// Keep the connection alive unless the client wants to terminate it.
 	if (!client->terminate) {
 
 		len = snprintf(buffer, sizeof(buffer), "Connection: keep-alive\n");
 		WRITE_VALIDATED(client->socket, buffer, len);
 	}
-
-	// Tell the client to not cache our response.
-	len = snprintf(buffer, sizeof(buffer), "Cache-Control: max-age=0, no-cache, must-revalidate, proxy-revalidate\n");
-	WRITE_VALIDATED(client->socket, buffer, len);
 
 	// Write the content if there is any.
 	if (response->content != NULL && response->content_type != NULL) {
@@ -573,7 +580,7 @@ static bool http_server_handle_static_file(struct client_t *client, const struct
 	file_buffer[response.content_length] = 0;
 	
 	// Send a response along with the requested file.
-	http_server_send_response(client, &response);
+	http_server_send_response(client, &response, true);
 
 	return true;
 }
